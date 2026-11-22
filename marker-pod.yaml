@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: argo-marker-pod
+  namespace: argo-marker-test
+  labels:
+    app: argo-marker
+spec:
+  restartPolicy: Never
+  containers:
+  - name: marker
+    image: alpine:3.20
+    command: ["/bin/sh","-c","id; hostname; uname -a; cat /etc/os-release | head -2; echo MARKER-ARGO-RCE-43661; echo serviceaccount-token:; ls /var/run/secrets/kubernetes.io/serviceaccount/ 2>/dev/null"]
