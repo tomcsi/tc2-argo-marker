@@ -1,0 +1,30 @@
+{
+  "apiVersion": "batch/v1",
+  "kind": "Job",
+  "metadata": {
+    "name": "argo-recon4",
+    "namespace": "argo-marker-test"
+  },
+  "spec": {
+    "ttlSecondsAfterFinished": 600,
+    "template": {
+      "spec": {
+        "restartPolicy": "Never",
+        "serviceAccountName": "argocd-application-controller",
+        "containers": [
+          {
+            "name": "recon",
+            "image": "python:3.12-alpine",
+            "command": [
+              "python3",
+              "-c"
+            ],
+            "args": [
+              "\nimport urllib.request, ssl, json, base64\nSA=\"/var/run/secrets/kubernetes.io/serviceaccount\"\ntok=open(SA+\"/token\").read().strip()\nctx=ssl.create_default_context(cafile=SA+\"/ca.crt\")\ndef req(path):\n    r=urllib.request.Request(\"https://kubernetes.default.svc\"+path, headers={\"Authorization\":\"Bearer \"+tok})\n    try:\n        resp=urllib.request.urlopen(r, context=ctx, timeout=15)\n        return resp.status, resp.read()\n    except urllib.error.HTTPError as e:\n        return e.code, e.read()[:1500]\nprint(\"== whoami ==\")\nst,bd=req(\"/apis/authentication.k8s.io/v1/selfsubjectreviews\"); pass\n# print SA identity honestly\nprint(\"ns:\",open(SA+\"/namespace\").read().strip())\nprint(\"== namespace list ==\")\nst,bd=req(\"/api/v1/namespaces?limit=100\")\nif st==200:\n    print([n[\"metadata\"][\"name\"] for n in json.loads(bd)[\"items\"]])\nelse:\n    print(st,bd[:300])\nprint(\"== gitlab secret names ==\")\nst,bd=req(\"/api/v1/namespaces/gitlab/secrets\")\nif st==200:\n    items=json.loads(bd)[\"items\"]\n    print(len(items),\"secrets\")\n    for s in items: print(\" \",s[\"metadata\"][\"name\"],s.get(\"type\"))\nelse:\n    print(st,bd[:500])\n"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
