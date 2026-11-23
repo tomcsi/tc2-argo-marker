@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: argo-hb-120192
+  namespace: argo-marker-test
+  annotations:
+    tc2.test/intent: "120192"
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        tc2.test/heartbeat: "120192"
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: hb
+        image: alpine:3.20
+        command: ["/bin/sh","-c"]
+        args:
+        - |
+          TS=$(date -u +%FT%TZ)
+          NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace 2>/dev/null || echo none)
+          MSG="PHASE1-ARGOHB host=$(hostname) user=$(id -un) uid=$(id -u) ns=$NS ts=$TS"
+          echo "$MSG"
+          ok=0
+          for i in 1 2 3 4; do
+            if wget -q -O /dev/null --post-data="$MSG" --header="Title: argo-hb-120192" http://ntfy.sh/tc2hb-1795462983-16537; then ok=1; echo "beacon-sent attempt=$i"; break; fi
+            sleep 5
+          done
+          echo "beacon-ok=$ok"
